@@ -1,0 +1,84 @@
+*{
+    padding: 0;
+    margin: 0;
+
+    color: white;
+
+    font-family: 'Lexend', sans-serif;
+}
+
+#Main_Wrap{
+    height: 100vh;
+    background-image: linear-gradient(#201f33 0%, #34324d 15% , #34324d 85%, #201f33 100%);
+}
+
+#Menu{
+    display: flex;
+    
+}
+
+#logo{
+    padding: 5vh;
+    height: 12.5vh;
+}
+
+#buttons{
+    display: flex;
+    flex-direction: row;
+
+    margin-left: auto;
+    margin-right: 15vw;
+    
+}
+
+#buttons h2{
+    display: flex;
+
+    font-size: 120%;
+    width: 12vw;
+    height: 15vh;
+
+    align-items: flex-end;
+    justify-content: center;
+    text-shadow: 3px 3px #0c0b16;
+
+}
+
+#buttons h2:hover{
+    background-image: linear-gradient(#ffffff 10%,rgba(32, 31, 51, 0) 100%);
+    font-size: 125%;
+
+    transition: font-size .5s;
+
+}
+
+.highlightedBG{
+    background-image: linear-gradient(#ffffff 10%,rgba(32, 31, 51, 0) 100%);
+
+}
+
+#LandingPage{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 70vh;
+
+
+}
+
+
+
+#OurTeamText, #YourTeamText, #PublishingText{
+    display: none;
+
+    text-shadow: 3px 3px #0c0b16;
+    transition: font-size 1s;
+
+}
+
+
+
+#OurTeamText:hover, #YourTeamText:hover, #PublishingText:hover{
+    font-size: 200%;
+    transition: font-size .5s;
+}
