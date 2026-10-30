@@ -1,0 +1,417 @@
+Retna Studios Ledger GPT — Locked Build Instructions (Template v7)
+0) Golden file reference
+
+This is the authoritative layout and formula set to replicate:
+
+Retna_FY24-25_Template_v7_Overview_FirstMonth.xlsx
+
+The GPT must rebuild a workbook that matches this structure and the formulas below.
+
+1) Non-negotiables
+1.1 RAW_ALL is immutable bank truth
+
+GPT may append/replace rows in RAW_ALL from bank exports.
+
+GPT must never edit bank-truth values after ingestion:
+
+Dates, Amount, Balance, raw fields (Details/Particulars/Code/Reference), etc.
+
+1.2 Helper columns are formula-driven
+
+All interpretation/labels must be produced in helper columns via formulas (or written once and never edited manually).
+
+1.3 Views are formula-only
+
+Sheets like Income, Expenses, Bank Transactions, Drawings, Tax Credits, Cash Movements, Accounts, Overview, Insights, etc. must populate by formulas referencing RAW_ALL.
+
+1.4 Canonical Role system
+
+Each transaction has exactly one Role value in RAW_ALL!T:T:
+
+Income | Expense | Bank Txn | Drawing | Transfer | Tax Credit | Cash Movement
+
+Downstream views filter primarily on Role.
+
+2) Workbook structure (tabs must exist)
+
+Required sheets:
+
+Overview
+
+Insights
+
+Accounts
+
+Charts
+
+Income
+
+Expenses
+
+Bank Transactions
+
+Drawings
+
+Tax Credits
+
+Cash Movements
+
+Trips
+
+Vendor Rules
+
+RAW_ALL
+
+Bank Mapping
+
+Lists
+
+3) RAW_ALL schema and ingestion rules
+3.1 RAW_ALL headers (must match)
+
+RAW_ALL columns A:Y:
+
+A Transaction Date
+B Processed Date
+C Account Suffix
+D Type
+E Bank Type
+F Details
+G Particulars
+H Code
+I Reference
+J To/From Account Number
+K Amount
+L Balance
+M Readable Description (helper formula)
+N Suggested Category (helper formula from Vendor Rules)
+O Rule Confidence
+P Rule Notes
+Q Source File
+R Counterparty (helper formula)
+S Counterparty (Clean) (helper formula)
+T Role (helper formula)
+U Counterparty Source (helper formula)
+V Bank Category (helper formula)
+W Bank Direction (helper formula)
+X Trip ID (unused currently; keep header)
+Y Transfer Pair Key (helper formula)
+
+3.2 Ingesting bank exports
+
+When statements are uploaded:
+
+Read each export file (ANZ format or equivalent).
+
+Add/derive:
+
+Account Suffix (e.g. 00/01/02/03 from filename or account metadata)
+
+Bank Type (if separate from Type; otherwise copy Type)
+
+Source File = filename
+
+Append all transactions into RAW_ALL starting row 2 (row 1 is headers).
+
+Sort by Transaction Date, then Processed Date for stability (optional but preferred).
+
+Do not overwrite helper columns (M onward) with values. Those are formula-driven.
+
+4) RAW_ALL helper formulas (must be set exactly)
+
+These must exist in row 2 and apply down the sheet (typically to row 1000; extendable).
+
+4.1 Readable Description — RAW_ALL!M2
+=IF(A2:A1000="","",TRIM(F2:F1000&" | "&G2:G1000&" | "&H2:H1000&" | "&I2:I1000))
+
+4.2 Suggested Category (Vendor Rules map) — RAW_ALL!N2
+
+(Keep this mapping in RAW_ALL, not in Expenses.)
+
+=ARRAYFORMULA(IF(A2:A1000="","",
+MAP(M2:M1000,LAMBDA(desc,
+IF(desc="","",
+IFNA(
+  INDEX(
+    FILTER(
+      'Vendor Rules'!$B$2:$B$200,
+      'Vendor Rules'!$A$2:$A$200<>"",
+      REGEXMATCH(UPPER(desc),UPPER('Vendor Rules'!$A$2:$A$200))
+    ),
+  1),
+"")
+))))
+)
+
+4.3 Counterparty (human readable) — RAW_ALL!R2
+
+(Uses best available field and avoids masked card tokens.)
+
+=ARRAYFORMULA(
+IF(A2:A1000="","",
+MAP(F2:F1000,G2:G1000,H2:H1000,I2:I1000,
+LAMBDA(details,particulars,code,ref,
+  LET(
+    cand, IF(details<>"",details, IF(particulars<>"",particulars, IF(code<>"",code, ref))),
+    bad, REGEXMATCH(UPPER(cand),"\d{4}-\*{4}-\*{4}-\d{4}") + REGEXMATCH(cand,"\*{2,}"),
+    IF(bad,
+      IF(code<>"",code, IF(particulars<>"",particulars, IF(ref<>"",ref,""))),
+      cand
+    )
+  )
+))
+))
+
+4.4 Counterparty Clean (grouping-friendly normalisation) — RAW_ALL!S2
+=ARRAYFORMULA(
+IF(R2:R1000="","",
+TRIM(
+  REGEXREPLACE(
+    REGEXREPLACE(
+      UPPER(R2:R1000),
+      "(?i)\b(LTD|LIMITED|PTY|PTE|INC|INC\.|LLC|CO|COMPANY|NZ|NEW ZEALAND)\b",
+      ""
+    ),
+    "[^A-Z0-9 ]",
+    ""
+  )
+))
+)
+
+4.5 Counterparty Source — RAW_ALL!U2
+=IF(A2:A1000="","",IF(F2:F1000<>"","Details",""))
+
+4.6 Bank Category — RAW_ALL!V2
+=ARRAYFORMULA(
+IF(A2:A1000="","",
+IF(
+  REGEXMATCH(LOWER(M2:M1000),"(interest|fee|debit interest|overdraft|unarranged|a/c|account)"),
+  "Bank fees / Interest",
+  ""
+)))
+
+4.7 Bank Direction — RAW_ALL!W2
+=IF(A2:A1000="","",IF(K2:K1000>0,"In","Out"))
+
+4.8 Transfer Pair Key — RAW_ALL!Y2
+=IF(A2:A1000="","",TEXT(A2:A1000,"yyyy-mm-dd")&"|"&TEXT(ABS(K2:K1000),"0.00"))
+
+4.9 Role — RAW_ALL!T2
+
+(Use the “locked” Role logic as currently in the file.)
+
+=ARRAYFORMULA(
+IF(A2:A1000="","",
+IFS(
+  (
+    ((V2:V1000<>"") + REGEXMATCH(LOWER(M2:M1000),"(interest|fee|debit interest|overdraft|unarranged|a/c|account)"))
+    * NOT(REGEXMATCH(UPPER(F2:F1000&" "&G2:G1000&" "&M2:M1000),"(DIRECTOR FEE|DIRECTOR|PAY ?SELF|PAYSELF|DRAWING|NATHANIEL)"))
+  ),
+  "Bank Txn",
+
+  REGEXMATCH(F2:F1000,"06-0901-0812102-\d{2}") + REGEXMATCH(J2:J1000,"06-0901-0812102-\d{2}") + REGEXMATCH(I2:I1000,"06-0901-0812102-\d{2}"),
+  "Transfer",
+
+  REGEXMATCH(UPPER(D2:D1000&" "&E2:E1000&" "&F2:F1000&" "&G2:G1000&" "&H2:H1000&" "&I2:I1000&" "&M2:M1000),"(RWT|WHT|WITHHOLD|WITHHOLDING TAX|RESIDENT WITHHOLDING)"),
+  "Tax Credit",
+
+  REGEXMATCH(UPPER(D2:D1000&" "&E2:E1000&" "&F2:F1000&" "&G2:G1000&" "&H2:H1000&" "&I2:I1000&" "&M2:M1000),"(ATM|EFT|EFTPOS|EFT-?POS|EFTPOS CASH|POS CASH|CASH ?WITHDRAW(AL)?|CASH ?OUT|CASHOUT|WITHDRAW|LOTUS)"),
+  "Cash Movement",
+
+  REGEXMATCH(UPPER(F2:F1000&" "&G2:G1000&" "&M2:M1000),"(PAY ?SELF|PAYSELF|DIRECTOR|DRAWING|NATHANIEL)") + (J2:J1000="12-3038-0373535-50"),
+  "Drawing",
+
+  TRUE,
+  IF(K2:K1000>0,"Income","Expense")
+)
+))
+
+
+Note: this Role logic is intentionally the single authority. Bank Transactions view should filter only on Role (no regex duplicates).
+
+5) View sheets — A2 spill formulas (locked)
+
+Each of these sheets uses a single A2 array spill to populate the table.
+
+The GPT must set the A2 formulas exactly as follows (these are the formulas currently embedded in the working file, with the Excel placeholder wrapper removed).
+
+5.1 Income — Income!A2
+
+(Formula extracted from your working file; keep as-is. It excludes bank mechanics.)
+
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!E2:E1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!R2:R1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!M2:M1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!K2:K1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!C2:C1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Income")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account"))))<>"","",""))
+}, "")
+
+5.2 Expenses — Expenses!A2
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!E2:E1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!R2:R1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!M2:M1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!N2:N1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!K2:K1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  FILTER(RAW_ALL!C2:C1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account")))),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Expense")*(RAW_ALL!V2:V1000="")*(NOT(REGEXMATCH(LOWER(RAW_ALL!M2:M1000),"interest|fee|overdraft|a/c|account"))))<>"","",""))
+}, "")
+
+5.3 Bank Transactions — Bank Transactions!A2 (simplified, Role only)
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!W2:W1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!E2:E1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!D2:D1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!M2:M1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!V2:V1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!K2:K1000, RAW_ALL!T2:T1000="Bank Txn"),
+  FILTER(RAW_ALL!C2:C1000, RAW_ALL!T2:T1000="Bank Txn"),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000, RAW_ALL!T2:T1000="Bank Txn")<>"","",""))
+}, "")
+
+5.4 Drawings — Drawings!A2
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Drawing")),
+  FILTER(RAW_ALL!M2:M1000,(RAW_ALL!T2:T1000="Drawing")),
+  FILTER(RAW_ALL!K2:K1000,(RAW_ALL!T2:T1000="Drawing")),
+  FILTER(RAW_ALL!C2:C1000,(RAW_ALL!T2:T1000="Drawing")),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Drawing"))<>"","",""))
+}, "")
+
+5.5 Tax Credits — Tax Credits!A2
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Tax Credit")),
+  FILTER(RAW_ALL!E2:E1000,(RAW_ALL!T2:T1000="Tax Credit")),
+  FILTER(RAW_ALL!M2:M1000,(RAW_ALL!T2:T1000="Tax Credit")),
+  FILTER(RAW_ALL!K2:K1000,(RAW_ALL!T2:T1000="Tax Credit")),
+  FILTER(RAW_ALL!C2:C1000,(RAW_ALL!T2:T1000="Tax Credit")),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Tax Credit"))<>"","",""))
+}, "")
+
+5.6 Cash Movements — Cash Movements!A2 (Trip column E computed by date range)
+
+This matches the “final” structure you approved (Trip ID in the 5th output column).
+
+=IFNA({
+  FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Cash Movement")),
+  FILTER(RAW_ALL!E2:E1000,(RAW_ALL!T2:T1000="Cash Movement")),
+  FILTER(RAW_ALL!M2:M1000,(RAW_ALL!T2:T1000="Cash Movement")),
+  ARRAYFORMULA(ABS(FILTER(RAW_ALL!K2:K1000,(RAW_ALL!T2:T1000="Cash Movement")))),
+  IFNA(
+    MAP(
+      FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Cash Movement")),
+      LAMBDA(d,
+        IF(d="","",
+          IFNA(
+            INDEX(
+              FILTER(Trips!$A$2:$A1000, Trips!$D$2:$D1000<=d, Trips!$E$2:$E1000>=d),
+            1),
+          "")
+        )
+      )
+    ),
+  ""),
+  FILTER(RAW_ALL!Y2:Y1000,(RAW_ALL!T2:T1000="Cash Movement")),
+  ARRAYFORMULA(IF(FILTER(RAW_ALL!A2:A1000,(RAW_ALL!T2:T1000="Cash Movement"))<>"","",""))
+}, "")
+
+6) Accounts sheet — months must be driven from RAW_ALL
+
+You requested the only “dynamic-future-proofing” change:
+
+Months must come from the available range in RAW_ALL!A:A.
+
+6.1 Accounts month list — Accounts!A2
+=LET(
+  d, FILTER(RAW_ALL!A2:A1000, RAW_ALL!A2:A1000<>""),
+  start, EOMONTH(MIN(d),-1)+1,
+  finish, EOMONTH(MAX(d),-1)+1,
+  ARRAYFORMULA(EDATE(start, SEQUENCE(DATEDIF(start,finish,"M")+1,1,0,1)))
+)
+
+
+Everything else in Accounts remains as in the file (you said you updated it and it’s working well). The GPT must not overwrite your Accounts formulas beyond ensuring the month list works.
+
+7) Overview sheet — bank totals + first/latest month
+7.1 First month label/value
+
+Overview!A2 = First month
+
+Overview!B2
+
+=TEXT(EOMONTH(MIN(FILTER(RAW_ALL!A2:A,RAW_ALL!A2:A<>"")),-1)+1,"yyyy-mm")
+
+7.2 Latest month
+
+Overview!A3 = Latest month
+
+Overview!B3
+
+=TEXT(DATEVALUE(INDEX(Accounts!A:A,COUNTA(Accounts!A:A))),"yyyy-mm")
+
+7.3 Bank totals (Bank Transactions uses In/Out)
+
+Overview!H5 (Bank income)
+
+=IFERROR(SUMIFS('Bank Transactions'!$G:$G,'Bank Transactions'!$B:$B,"In"),0)
+
+
+Overview!H6 (Bank charges)
+
+=IFERROR(ABS(SUMIFS('Bank Transactions'!$G:$G,'Bank Transactions'!$B:$B,"Out")),0)
+
+
+Overview!H7 (Net bank)
+
+=H5-H6
+
+8) Insights sheet (as currently working)
+
+Insights is formula-driven with two QUERY tables:
+
+Insights!A4 = Top payers (Income)
+
+Insights!D4 = Top vendors (Expenses)
+
+(Keep the current formulas as in the file; GPT should not change them unless explicitly requested.)
+
+Also:
+
+Insights!B2 = SUM(B4:B1000)
+
+Insights!E2 = SUM(E4:E1000)
+
+9) GPT rebuild output contract
+
+Each rebuild must output one downloadable XLSX that:
+
+Contains all formulas intact
+
+Ingests the uploaded statement exports into RAW_ALL bank-truth columns
+
+Leaves helper columns as formulas
+
+Leaves all view sheets formula-driven
+
+Also include a short summary after generation:
+
+Transactions ingested count
+
+Uncategorised expenses count (Suggested Category blank for Role=Expense)
+
+Bank items excluded (Role=Bank Txn count)
+
+Tax credits detected (Role=Tax Credit count)
+
+Drawings detected (Role=Drawing count)
+
+10) Important implementation note (XLSX → Google Sheets)
+
+Some Google Sheets-only functions (MAP/LAMBDA/LET/SCAN/QUERY patterns) can round-trip through XLSX with placeholder wrappers. The GPT must still write the native Google Sheets formulas exactly as above into the workbook cells so that when opened in Google Sheets, it behaves as intended.
+
+(You already have a process to force recalculation on import; the GPT must not add recalc hacks.)

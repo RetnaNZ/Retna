@@ -1,0 +1,358 @@
+RETNA_LEDGER_BUILD_CHECKLIST v1.0
+STATUS: LOCKED
+PURPOSE: Deterministic rebuild validation for Retna Studios Ledger GPT
+
+==================================================
+SECTION 0 — TEMPLATE & WORKBOOK IMMUTABILITY (NON-NEGOTIABLE)
+==================================================
+
+RULE:
+- ALL ingestions and rebuilds MUST start from the provided Retna ledger template.
+- The template is the single canonical source of:
+  - Workbook structure
+  - Sheet names
+  - Column order
+  - Formulas
+  - Charts
+
+Nothing outside the template may be treated as authoritative.
+
+--------------------------------------------------
+0.1 NON-NEGOTIABLE CONSTRAINTS
+--------------------------------------------------
+
+The GPT MUST NEVER:
+
+- Delete rows or columns in a way that removes or displaces formulas
+- Clear, overwrite, or hard-code any helper or view column
+- Recreate, regenerate, refactor, or “rebuild” formulas programmatically
+- Reconstruct helper logic from memory or documentation
+- Simplify, optimise, or “clean up” existing formulas
+- Touch any sheet other than RAW_ALL during ingestion
+- Modify, recreate, or replace charts in any form
+
+Charts are native Excel chart objects and are AUTHORITATIVE.
+If charts are converted to images, dropped, or altered in any way,
+the rebuild is considered FAILED.
+
+--------------------------------------------------
+0.2 FORMULA PROTECTION
+--------------------------------------------------
+
+All formulas in the template are intentional and must be preserved
+exactly as supplied, including but not limited to:
+
+- RAW_ALL!M:Y (all helper columns)
+- Income
+- Expenses
+- Bank Transactions
+- Drawings
+- Tax Credits
+- Cash Movements
+- Accounts
+- Overview
+- Insights
+
+Formulas may exist far beyond visible data ranges.
+Their presence MUST NOT be interpreted as existing data.
+
+--------------------------------------------------
+0.3 ALLOWED DATA MODIFICATIONS (STRICTLY LIMITED)
+--------------------------------------------------
+
+The ONLY permitted write actions are:
+
+- Writing values into RAW_ALL bank-truth columns:
+  - RAW_ALL!A:L
+  - RAW_ALL!Q (Source File)
+- Appending new rows WITHOUT disturbing existing formulas
+
+NO other sheets may receive pasted, written, or transformed data.
+
+--------------------------------------------------
+0.4 RAW_ALL APPEND ANCHOR (CRITICAL)
+--------------------------------------------------
+
+When ingesting statement data into RAW_ALL:
+
+- The append position MUST be determined by scanning RAW_ALL!A:A
+  (Transaction Date column) starting from row 2.
+- The FIRST row where RAW_ALL!A is blank is the append start.
+- The GPT MUST NOT use:
+  - worksheet.max_row
+  - Excel “used range”
+  - Last non-empty cell in formula columns
+
+Rationale:
+Helper and view formulas are intentionally pre-filled and must never
+influence ingestion position.
+
+--------------------------------------------------
+0.5 FAILURE MODES (HARD STOPS)
+--------------------------------------------------
+
+The GPT MUST STOP and request explicit user instruction if:
+
+- A rebuild would require removing, regenerating, or altering formulas
+- The ingestion tool cannot preserve native Excel charts
+- Charts are converted to images or otherwise corrupted
+- The template structure does not match expected requirements
+
+Silent degradation is forbidden.
+
+--------------------------------------------------
+0.6 RATIONALE
+--------------------------------------------------
+
+This ledger is intentionally formula-driven and audit-sensitive.
+
+- Formula integrity outweighs speed or convenience
+- Chart fidelity outweighs automation
+- Determinism outweighs flexibility
+
+Passing this checklist takes priority over completing a rebuild.
+==================================================
+SECTION 1 — WORKBOOK STRUCTURE
+==================================================
+
+[REQUIRED_SHEETS]
+- Overview
+- Insights
+- Accounts
+- Charts
+- Income
+- Expenses
+- Bank Transactions
+- Drawings
+- Tax Credits
+- Cash Movements
+- Trips
+- Vendor Rules
+- RAW_ALL
+- Bank Mapping
+- Lists
+
+VALIDATION:
+- All sheets MUST exist
+- Sheet names MUST match exactly (case-sensitive)
+
+==================================================
+SECTION 2 — RAW_ALL SCHEMA
+==================================================
+
+[RAW_ALL_HEADERS_ORDERED]
+A  Transaction Date
+B  Processed Date
+C  Account Suffix
+D  Type
+E  Bank Type
+F  Details
+G  Particulars
+H  Code
+I  Reference
+J  To/From Account Number
+K  Amount
+L  Balance
+M  Readable Description
+N  Suggested Category
+O  Rule Confidence
+P  Rule Notes
+Q  Source File
+R  Counterparty
+S  Counterparty Clean
+T  Role
+U  Counterparty Source
+V  Bank Category
+W  Bank Direction
+X  Trip ID
+Y  Transfer Pair Key
+
+VALIDATION:
+- Header row must be row 1
+- No missing columns
+- No reordered columns
+- Columns A–L are immutable bank truth
+
+==================================================
+SECTION 3 — RAW_ALL HELPER FORMULAS
+==================================================
+
+[FORMULA_REQUIRED]
+RAW_ALL!M2  Readable Description
+RAW_ALL!N2  Suggested Category (Vendor Rules MAP)
+RAW_ALL!R2  Counterparty (human readable)
+RAW_ALL!S2  Counterparty Clean (grouping)
+RAW_ALL!T2  Role (canonical role logic)
+RAW_ALL!V2  Bank Category
+RAW_ALL!W2  Bank Direction
+RAW_ALL!Y2  Transfer Pair Key
+
+VALIDATION:
+- All helper columns must contain formulas
+- No helper column may contain hard-coded values
+- Role column MUST output exactly one of:
+  Income | Expense | Bank Txn | Drawing | Transfer | Tax Credit | Cash Movement
+
+==================================================
+SECTION 4 — ROLE LOGIC INTEGRITY
+==================================================
+
+[ROLE_RULES]
+- Role is single source of classification truth
+- Views must NOT reclassify transactions
+- Bank mechanics must NOT leak into Income or Expenses
+- Director fees must classify as Drawing, not Bank Txn
+- Tax withholding must classify as Tax Credit
+
+VALIDATION:
+- No transaction appears in more than one Role-based view
+- Bank Transactions view filters ONLY Role = "Bank Txn"
+
+==================================================
+SECTION 5 — VIEW SHEET CONSTRUCTION
+==================================================
+
+[VIEW_RULES]
+- Each view sheet uses a single A2 spill formula
+- All columns are populated via FILTER / MAP / ARRAYFORMULA
+- No manual edits below header row
+- No mixed-height array literals
+- No IFERROR wrapping around arrays
+
+[VIEW_SHEETS]
+- Income
+- Expenses
+- Bank Transactions
+- Drawings
+- Tax Credits
+- Cash Movements
+
+VALIDATION:
+- Clearing RAW_ALL rows automatically updates all views
+- No view contains pasted/static values
+
+==================================================
+SECTION 6 — CASH MOVEMENTS
+==================================================
+
+[CASH_MOVEMENTS_COLUMNS]
+A  Date
+B  Bank Type
+C  Readable Description
+D  Amount (ABS)
+E  Trip ID (date-range derived)
+F  Transfer Pair Key
+G  Spacer
+
+VALIDATION:
+- Trip ID must be computed from Trips date ranges
+- Trip logic must not live in RAW_ALL
+
+==================================================
+SECTION 7 — ACCOUNTS SHEET
+==================================================
+
+[MONTHS_GENERATION]
+- Accounts!A2 must generate months dynamically
+- Month range derived from RAW_ALL!Transaction Date
+- Start = first month present
+- End = latest month present
+
+VALIDATION:
+- Partial financial years must work (e.g. Apr → Jan)
+- Adding new data auto-extends month list
+
+[ACCOUNTS_RULES]
+- All totals sourced directly from RAW_ALL
+- No dependency on Income/Expenses sheets
+- All columns formula-driven
+
+==================================================
+SECTION 8 — OVERVIEW SHEET
+==================================================
+
+[OVERVIEW_FIELDS]
+- First month (derived from RAW_ALL)
+- Latest month (derived from Accounts)
+- Bank Income (Bank Transactions, Direction = In)
+- Bank Charges (Bank Transactions, Direction = Out)
+- Net Bank
+
+VALIDATION:
+- No Overview totals depend on manual input
+- Bank logic uses In / Out (not Income / Expense)
+
+==================================================
+SECTION 9 — INSIGHTS
+==================================================
+
+[INSIGHTS_RULES]
+- Top Payers = Income only
+- Top Vendors = Expenses only
+- Grouping must use human-readable fields
+- No card numbers or masked tokens allowed
+
+VALIDATION:
+- QUERY outputs must not produce blank-space headers
+- No ARRAY_ROW mismatch errors
+
+==================================================
+SECTION 10 — REBUILD OUTPUT
+==================================================
+
+[REBUILD_OUTPUT]
+- Single downloadable workbook
+- All formulas intact
+- No recalculation hacks
+- No volatile functions added
+
+[REBUILD_SUMMARY_REQUIRED]
+- Transactions ingested count
+- Uncategorised Expenses count
+- Bank Txn count
+- Drawing count
+- Tax Credit count
+- Date range detected
+
+==================================================
+END CHECKLIST
+==================================================
+
+
+==================================================
+SECTION 11 — CHART PRESERVATION (NON-NEGOTIABLE)
+==================================================
+
+RULE:
+- All charts in the supplied workbook are AUTHORITATIVE and FINAL.
+- Charts are native Excel chart objects and must be preserved exactly as supplied.
+
+FORBIDDEN ACTIONS:
+- Creating charts
+- Rebuilding or regenerating charts
+- Replacing charts with images
+- Exporting charts as PNG, JPG, SVG, or screenshots
+- Modifying chart ranges, axes, titles, legends, or series
+- Writing VBA or Python for chart construction
+- Touching the Charts sheet in any way
+
+DATA FLOW CONSTRAINT:
+- Raw data ingestion is limited exclusively to RAW_ALL.
+- No other sheet may receive pasted or transformed raw data.
+- Charts must update solely via existing formulas and references.
+
+VALIDATION:
+- Charts sheet exists
+- Charts are native Excel chart objects (not images)
+- No chart images exist anywhere in the workbook
+- RAW_ALL is the only modified sheet
+- All other sheets remain formula-driven and untouched
+
+FAILURE MODE:
+- Failure of any chart preservation rule is a HARD STOP.
+- The GPT must halt and request explicit user instruction.
+
+==================================================
+
+END CHECKLIST
+==================================================
